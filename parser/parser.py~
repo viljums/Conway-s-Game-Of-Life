@@ -1,0 +1,31 @@
+'''halfmax.cells'''
+#os.path.exists
+
+def parser (patternFile):
+    mapFile = open(patternFile, 'r')
+    content = mapFile.readlines() + ['\r\n']
+    mapFile.close()
+
+    patternTextLines = [] # contains the lines for a single level's map.
+
+    patternObj = [] # the map object made from the data in mapTextLines
+
+    for lineNum in range (len(content)):
+        # Process each line that was in the level file.
+        line = content[lineNum].rstrip('\r\n')
+
+        if '!' in line:
+            continue
+        else:
+            patternTextLines.append(line)
+
+    for textLineNum in range (len(patternTextLines)):
+        textLine = patternTextLines[textLineNum]
+        for symbolNum in range (len(textLine)):
+            if textLine[symbolNum] == 'O':
+                patternObj.append((symbolNum, textLineNum))
+
+    print patternObj
+
+readPatternFile ('Patterns/x66.cells')
+        

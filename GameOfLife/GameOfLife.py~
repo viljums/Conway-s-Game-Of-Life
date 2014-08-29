@@ -1,0 +1,396 @@
+#10 dazadas krasu shemas, layouti
+#gatavas formas
+#tooltipi kas paskaidro formas
+#2i laukuma izmeri ar 20 un 10 pikselju rutinjam 5am, eksperimentala karta
+#pattern read and save
+
+import pygame, sys, time
+from pygame.locals import*
+from textbox import TextBox
+import parser
+
+WINDOWHEIGHT = 600
+WINDOWWIDTH = 800
+CELLSIZE = 20
+
+FPS = 60
+
+GREY = (133, 133, 133)
+BLACK = (0, 0, 0)
+DARKGREY = (50, 50, 50)
+GREEN = (0, 255, 255)
+WHITE = (255, 255, 255)
+BLUE = (0, 0, 200)
+
+MENUCOLOR = BLUE 
+TEXTCOLOR = BLACK
+
+
+UP = True
+DOWN = False
+
+
+def main ():
+    global DISPLAYSURF, BASICFONT, LARGEFONT
+    pygame.init ()
+    pygame.display.set_caption ('Game Of Life')
+    DISPLAYSURF = pygame.display.set_mode ((WINDOWWIDTH, WINDOWHEIGHT))
+    BASICFONT = pygame.font.Font ('freesansbold.ttf', 32)
+    LARGEFONT = pygame.font.Font ('freesansbold.ttf', 64)
+    while True: # main game loop
+        runGame ()
+
+
+def runGame ():
+    FPSCLOCK = pygame.time.Clock()
+    board = parser.parser ('Patterns/x66.cells', CELLSIZE)
+    mouseButton = 0
+    mouseDown = False
+    pause = True
+    activeFPS = 10
+    generation = 1
+    buttons = []
+    mousey2 = 200
+    mousex2 = 200 #arbitrary number
+    history = []
+    lastUpdate = 0
+    menuHidden = False
+    hideTime = 0
+
+    while True: # event loop
+        DISPLAYSURF.fill (WHITE)
+        mousex = None
+        mousey = None
+        hilight = None
+        currentTime = time.time () # needed for time based events with menu hiding
+                                   # and generations per second
+        for event in pygame.event.get ():
+            if event.type == QUIT:
+                terminate ()
+            elif event.type == KEYUP:
+                if event.key == K_ESCAPE:
+                    terminate ()
+                if event.key == K_SPACE:
+                    if pause:
+                        pause = False
+                    else:    
+                        pause = True
+                if event.key == K_EQUALS:
+                    activeFPS = framesPerSecond (activeFPS, UP)
+                elif event.key == K_MINUS:
+                    activeFPS = framesPerSecond (activeFPS, DOWN)
+                if event.key == K_r:
+                    board = []
+                    generation = 1
+                    history = []
+                # buttons for regulating generations
+                if event.key == K_i and pause:
+                    if history != []:
+                        board = history.pop ()
+                        # we dont want negative numbers in gen count
+                        if generation != 1:
+                            generation -= 1
+                elif event.key == K_o and pause:
+                    board = getNextGen (board)
+                    history.append (board)
+                    generation += 1
+                elif event.key == K_h:
+                    if menuHidden:
+                        menuHidden = False
+                        hideTime = 0
+                    else:    
+                        menuHidden = True
+                        hideTime = time.time()
+            # mouse events
+            elif event.type == MOUSEBUTTONDOWN:
+                mouseDown = True
+                mouseButton = event.button
+                mousex, mousey = event.pos
+            elif event.type == MOUSEBUTTONUP:
+                mousex, mousey = event.pos 
+                mouseButton = event.button
+                mouseDown = False
+            if event.type == MOUSEMOTION:
+                if mouseDown == True:
+                    mousex, mousey = event.pos # for filling/emptying cells
+                mousex2, mousey2 = event.pos # for menu
+            #elif event.type == MOUSEBUTTONUP:
+                #mousex, mousey = event.pos
+        if pause :
+            if mousex != None:
+                x, y = convertCellCoords (mousex, mousey)
+                if mouseButton == 1 and (x, y) not in board and not inMenuZone (mousex, mousey, menuHidden): 
+                    board.append((x, y)) 
+                elif mouseButton == 3 and (x, y) in board:
+                    board.remove ((x, y))
+                history.insert (generation - 1, board)
+        else:
+            if history == []:
+                 history.append (board)
+            if currentTime - lastUpdate > 1.000/activeFPS:
+                board = getNextGen (board) 
+                lastUpdate = time.time ()
+                generation += 1
+                history.append (board)
+        
+        # draw everything
+        drawCells (board)
+        drawGrid ()
+
+        if not menuHidden:
+             if buttons != []:
+                 for butt in range (len (buttons)):
+                     if buttons[butt][1].collidepoint (mousex2, mousey2):
+                         hilight = butt
+             # handles button presses
+             if buttons != []:
+                 if buttons[0][1].collidepoint (mousex2, mousey2) and mouseDown:
+                     board = []
+                     history = []
+                     generation = 1
+                 elif buttons[2][1].collidepoint (mousex2, mousey2) and mouseDown:
+                     pause = False
+                 elif buttons[3][1].collidepoint (mousex2, mousey2) and mouseDown:
+                     pause = True
+                 elif buttons[4][1].collidepoint (mousex2, mousey2) and mouseDown:
+                     activeFPS = framesPerSecond (activeFPS, DOWN)
+                 elif buttons[5][1].collidepoint (mousex2, mousey2) and mouseDown:
+                     activeFPS = framesPerSecond (activeFPS, UP)
+                 elif buttons[7][1].collidepoint (mousex2, mousey2) and mouseDown:
+                     if history != []:
+                         board = history.pop ()
+                         # we dont want negative numbers in gen count
+                         if generation != 1:
+                             generation -= 1
+                 elif buttons[9][1].collidepoint (mousex2, mousey2) and mouseDown:
+                     board = getNextGen (board)
+                     history.append (board)
+                     generation += 1
+        
+                 elif buttons[11][1].collidepoint (mousex2, mousey2): 
+                     drawKBinds ()
+                     
+        
+             
+             buttons = menuCraft (activeFPS, generation, hilight)
+        
+             drawMenu (buttons)
+        else:
+            if currentTime - hideTime < 3 and menuHidden: # hint time
+                drawHint ()
+	
+	inPut = TextBox ((0, 0, 200, 60))
+	inPut.update ()
+	inPut.draw (DISPLAYSURF)
+
+        pygame.display.update ()
+        FPSCLOCK.tick (FPS)
+
+def drawGrid ():
+    for linex in range (CELLSIZE, WINDOWWIDTH, CELLSIZE):
+        pygame.draw.line (DISPLAYSURF, GREY, (linex, 0), (linex, WINDOWHEIGHT))
+
+    for liney in range (CELLSIZE, WINDOWHEIGHT, CELLSIZE):
+        pygame.draw.line(DISPLAYSURF, GREY, (0,liney), (WINDOWWIDTH, liney))
+
+def drawCells (board):
+    if len(board) == 0:
+        return
+    for cell in board:
+        cellx, celly = cell
+        pygame.draw.rect (DISPLAYSURF, DARKGREY, (cellx, celly, CELLSIZE, CELLSIZE))
+
+def convertCellCoords (mousex, mousey):
+    x = mousex/CELLSIZE
+    y = mousey/CELLSIZE
+
+    x *= CELLSIZE
+    y *= CELLSIZE
+    
+    return x, y
+
+
+
+def getNextGen (board):
+    cpyboard = list(board)
+    for cell in board:
+      neighbours = neighbourCount (board, cell) 
+      if neighbours >= 4:
+          cpyboard.remove (cell)
+      elif neighbours < 2:
+          cpyboard.remove (cell)
+
+    newCells = cellBirth (board)
+    for nCell in newCells:
+        if nCell not in board:
+            cpyboard.append (nCell)
+    return cpyboard
+
+#checks if cell can give birth to emptyspot in its neighours
+def cellBirth (board):
+    newCells = []
+    hood = [(CELLSIZE, 0), (CELLSIZE,CELLSIZE), (0,CELLSIZE), (-CELLSIZE,+CELLSIZE), (-CELLSIZE,0), (-CELLSIZE,-CELLSIZE), (0,-CELLSIZE), (+CELLSIZE,-CELLSIZE)]
+    for cell in board:
+        for neighbour in hood:
+            cellx, celly = cell
+            x, y = neighbour
+            if neighbourCount (board, (cellx + x, celly + y)) == 3:  
+                if (cellx + x, celly + y) not in newCells and \
+                    cellx + x < 1.5*WINDOWWIDTH \
+                    and celly + y < 1.5*WINDOWHEIGHT \
+                    and celly + y > - 0.5*WINDOWHEIGHT \
+                    and cellx + x > - 0.5*WINDOWWIDTH:
+                    newCells.append((cellx + x, celly + y))
+
+    return newCells
+
+
+
+# returns count of alive neighours
+def neighbourCount (board, cell):
+    hood = [(CELLSIZE, 0), (CELLSIZE,CELLSIZE), (0,CELLSIZE), (-CELLSIZE,+CELLSIZE), (-CELLSIZE,0), (-CELLSIZE,-CELLSIZE), (0,-CELLSIZE), (+CELLSIZE,-CELLSIZE)]   
+    count = 0
+
+    cellx, celly = cell
+    for neighbour in hood:
+        x, y = neighbour
+        if (cellx + x, celly + y) in board:
+            count += 1
+    return count
+
+
+def terminate ():
+    pygame.quit ()
+    sys.exit ()
+
+
+
+def framesPerSecond (activeFPS, decision):
+    modes = [1, 5, 10, 20, 40, 60]
+    m = modes.index (activeFPS)
+    if decision == UP and m != 5:
+        activeFPS = modes[m + 1]
+    elif decision == DOWN and m != 0:
+        activeFPS = modes[m - 1]
+    return activeFPS
+
+def drawMenu (buttons):
+    for butt in buttons:
+        DISPLAYSURF.blit (butt[0], butt[1])
+
+
+def getTextColor (buttonNum, hilight):
+    if buttonNum == hilight:
+        textColor = BLUE
+    else:
+        textColor = BLACK
+    return textColor
+
+def menuCraft (activeFPS, generation, hilight = 0):
+    buttons = []
+
+    # gen and speed text shouldn't highligh
+    # thats why they are gettin number 11,
+    # which doesn't match with thei index number
+    # therefore never highlighting.
+
+    textColor = getTextColor (0, hilight)
+    ctrlSurf = BASICFONT.render ('Reset', True, textColor)
+    ctrlRect = ctrlSurf.get_rect()
+    ctrlRect.topleft = (0, WINDOWHEIGHT - 32) #32 is a fontsize
+    buttons.append ((ctrlSurf, ctrlRect))
+
+    textColor = getTextColor (1, hilight)
+    optSurf = BASICFONT.render ('Options', True, textColor)
+    optRect = optSurf.get_rect()
+    optRect.topright = (WINDOWWIDTH, WINDOWHEIGHT - 32)
+    buttons.append ((optSurf, optRect))
+
+    textColor = getTextColor (2, hilight)
+    playSurf = BASICFONT.render ('Play', True, textColor)
+    playRect = playSurf.get_rect()
+    playRect.topleft = (ctrlRect.right + 60, ctrlRect.top) 
+    buttons.append ((playSurf, playRect))
+
+    textColor = getTextColor (3, hilight)
+    stopSurf = BASICFONT.render ('Stop', True, textColor)
+    stopRect = playSurf.get_rect()
+    stopRect.topleft = (playRect.right + 60, playRect.top) 
+    buttons.append ((stopSurf, stopRect))
+
+    textColor = getTextColor (4, hilight)
+    slowSurf = LARGEFONT.render ('-', True, textColor)
+    slowRect = slowSurf.get_rect()
+    slowRect.topleft = (stopRect.right + 60, WINDOWHEIGHT - 60)
+    buttons.append ((slowSurf, slowRect))
+
+    textColor = getTextColor (5, hilight)
+    fastSurf = LARGEFONT.render ('+', True, textColor)
+    fastRect = fastSurf.get_rect()
+    fastRect.topright = (optRect.left - 60, WINDOWHEIGHT - 60) # gap and fontsize
+    buttons.append ((fastSurf, fastRect))
+
+    textColor = getTextColor (12, hilight)
+    speedSurf = BASICFONT.render ('GPS : %d' % activeFPS, True, textColor) 
+    speedRect = speedSurf.get_rect()
+    speedRect.topleft = (slowRect.right + 12, WINDOWHEIGHT - 32) 
+    buttons.append ((speedSurf, speedRect))
+
+    textColor = getTextColor (7, hilight)
+    lessSurf = LARGEFONT.render ('-', True, textColor)
+    lessRect = lessSurf.get_rect()
+    lessRect.topleft = (0,-24) # gap and fontsize
+    buttons.append ((lessSurf, lessRect))
+
+    textColor = getTextColor (12, hilight)
+    genSurf = BASICFONT.render ('Gen : %d' % generation, True, textColor) 
+    genRect = genSurf.get_rect()
+    genRect.topleft = (lessRect.right + 20, 0) 
+    buttons.append ((genSurf, genRect))
+
+    textColor = getTextColor (9, hilight)
+    moreSurf = LARGEFONT.render ('+', True, textColor)
+    moreRect = moreSurf.get_rect()
+    moreRect.topleft = (180, -24) # gap and fontsize
+    buttons.append ((moreSurf, moreRect))
+
+    textColor = getTextColor (10, hilight)
+    hideSurf = BASICFONT.render ('Hide Menu', True, textColor) 
+    hideRect = hideSurf.get_rect()
+    hideRect.topright = (WINDOWWIDTH, 0) 
+    buttons.append ((hideSurf, hideRect))
+
+    textColor = getTextColor (11, hilight)
+    keyBSurf = BASICFONT.render ('Key Binds', True, textColor)
+    keyBRect = keyBSurf.get_rect()
+    keyBRect.center = (WINDOWWIDTH/2, 16)
+    buttons.append ((keyBSurf, keyBRect))
+
+    return buttons
+# Returns true, if coords is on the menu
+
+def inMenuZone (x, y, menuHidden):
+    if menuHidden:
+        return False
+    if x in range (0, WINDOWWIDTH) and y in range (0, 40):
+        return True
+    if x in range (0, WINDOWWIDTH) and y in range (WINDOWHEIGHT, WINDOWHEIGHT - 50, -1):
+        return True
+    else:
+        return False
+
+def drawHint ():
+    hintSurf = BASICFONT.render ('Menu hidden, press "h" to reveal it.', True, BLACK) 
+    hintRect = hintSurf.get_rect()
+    hintRect.center = (WINDOWWIDTH/2, WINDOWHEIGHT/2) 
+
+    DISPLAYSURF.blit ( hintSurf, hintRect)
+    
+
+def drawKBinds ():
+    imSurf = pygame.image.load ('kb.png')
+    imRect = pygame.Rect (0, 0, WINDOWWIDTH, WINDOWHEIGHT)
+
+    DISPLAYSURF.blit (imSurf, imRect)
+
+main ()
